@@ -1,109 +1,213 @@
-const fs = require('fs');
+const Tour = require('./../models/tourModel');
+const APIFeatures = require('./../utils/apiFeatures');
 
-const tours = JSON.parse(fs.readFileSync(`${__dirname}/../dev-data/data/tours-simple.json`));
-
-// Route middleware to check if tour id exists in the tours array
-exports.checkID = (req, res, next, val) => {
-    console.log(`Tour id: ${val}`);
-
-    const tour = tours.find(t => t.id === parseInt(req.params.id));
-
-    if (!tour) {
-        return res.status(404).json({
-            status: 'fail',
-            message: 'No tour found'
-        });
-    }
-
-    next();
-};
-
-// Route middleware to check body contains name and price
-exports.checkBody = (req, res, next) => {
-    if (!req.body.name || !req.body.price) {
-        return res.status(404).json({
-            status: 'fail',
-            message: 'Please provide name and price in the request body'
-        });
-    }
-
+// get top 5 cheap tours middleware
+exports.aliasTopTours = (req, res, next) => {
+    req.query.limit = '5';
+    req.query.sort = '-ratingsAverage,price';
+    req.query.fields = 'name,price,ratingsAverage,summary,difficulty';
     next();
 };
 
 // get all tours
-exports.getAllTours = (req, res) => {
-    console.log(req.requestTime);
+exports.getAllTours = async (req, res) => {
+    try {
+        // Build the query
+        const features = new APIFeatures(Tour.find(), req.query)
+            .filter()
+            .sort()
+            .limitFields()
+            .paginate();
 
-    res
-        .status(200)
-        .json({
+        // const tours = await query;
+        const tours = await features.query;
+
+        // Send response
+        res.status(200).json({
             message: 'success',
-            requestedAt: req.requestTime,
             results: tours.length,
             data: {
-                // tours: tours
                 tours
             }
-        })
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
 };
 
 // get a single tour
-exports.getTour = (req, res) => {
-    const tour = tours.find(t => t.id === parseInt(req.params.id));
+exports.getTour = async (req, res) => {
+    try {
+        const tour = await Tour.findById(req.params.id);
+        // Tour.findOne({ _id: req.params.id })
 
-    res.status(200).json({
-        message:'success',
-        data: {
-            tour
-        }
-    });
+        res.status(200).json({
+            message: 'success',
+            data: {
+                tour
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
 };
 
 // update a tour
-exports.updateTour = (req, res) => {
-    res.status(200).json({
-        message:'success',
-        data: {
-            tour: '<Updated tour here...>'
-        }
-    });
+exports.updateTour = async (req, res) => {
+    try {
+        const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
+            new: true,
+            runValidators: true
+        });
+        // Tour.findOne({ _id: req.params.id })
+
+        res.status(200).json({
+            message: 'success',
+            data: {
+                tour
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
 };
 
 // delete a tour
-exports.deleteTour = (req, res) => {
-    const tourIndex = tours.findIndex(t => t.id === parseInt(req.params.id));
+exports.deleteTour = async (req, res) => {
+    try {
+        await Tour.findByIdAndDelete(req.params.id);
 
-    // tours.splice(tourIndex, 1);
-
-    // fs.writeFile(
-    //     `${__dirname}/dev-data/data/tours-simple.json`,
-    //     JSON.stringify(tours),
-    //     (err) => err? console.error(err) : console.log('Tour deleted successfully!')
-    // );
-
-    // 204 status code means send back no content at all
-    res.status(204).json({
-        message: 'success',
-        data: null
-    });
+        // 204 status code means send back no content at all
+        res.status(204).json({
+            status: 'success',
+            data: null
+        });
+    } catch (error) {
+        res.status(404).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
 };
 
 // create a tour
-exports.createTour = (req, res) => {
-    const newTour = req.body;
-    newTour.id = tours[tours.length - 1].id + 1;
-    tours.push(newTour);
+exports.createTour = async (req, res) => {
+    try {
+        const newTour = await Tour.create(req.body);
 
-    fs.writeFile(
-        `${__dirname}/../dev-data/data/tours-simple.json`,
-        JSON.stringify(tours),
-        (err) => err ? console.error(err) : console.log('Tour added successfully!')
-    );
+        res.status(201).json({
+            message: 'success',
+            data: {
+                tour: newTour
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
+};
 
-    res.status(201).json({
-        message: 'success',
-        data: {
-            tour: newTour
-        }
-    });
+exports.getTourStats = async (req, res) => {
+    try {
+        const stats = await Tour.aggregate([
+            {
+                $match: { ratingsAverage: { $gte: 4.0 } }
+            },
+            {
+                $group: {
+                    _id: null,
+                    // _id: { $toUpper: '$difficulty' },
+                    numTours: { $sum: 1 },
+                    numRatings: { $sum: '$ratingsQuantity' },
+                    avgRating: { $avg: '$ratingsAverage' },
+                    minRating: { $min: '$rating' },
+                    maxRating: { $max: '$rating' },
+                    avgPrice: { $avg: '$price' },
+                    minPrice: { $min: '$price' },
+                    maxPrice: { $max: '$price' }
+                }
+            },
+            {
+                $sort: { avgPrice: 1 }
+            }
+            // {
+            //     $match: { _id: { $ne: 'EASY' } }
+            // }
+        ]);
+
+        // Send response
+        res.status(200).json({
+            message: 'success',
+            data: {
+                stats
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
+};
+
+exports.getMonthlyPlan = async (req, res) => {
+    try {
+        const year = parseInt(req.params.year, 10); // 2021
+
+        const plans = await Tour.aggregate([
+            {
+                $unwind: '$startDates'
+            },
+            {
+                $match: {
+                    startDates: {
+                        $gte: new Date(`${year}-01-01`),
+                        $lte: new Date(`${year}-12-31`)
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        $month: '$startDates'
+                    },
+                    numTours: { $sum: 1 },
+                    tours: { $push: '$name' }
+                }
+            },
+            {
+                $addFields: { month: '$_id' }
+            },
+            {
+                $project: { _id: 0 }
+            },
+            {
+                $sort: { numTours: -1 }
+            }
+        ]);
+
+        // Send response
+        res.status(200).json({
+            message: 'success',
+            data: {
+                plans
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
 };
