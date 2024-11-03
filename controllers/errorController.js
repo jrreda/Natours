@@ -54,7 +54,7 @@ module.exports = (error, req, res, next) => {
     error.status = error.status || 'error';
 
     if (process.env.NODE_ENV === 'development') {
-        sendErrorDev(error, req);
+        sendErrorDev(error, res);
     } else if (process.env.NODE_ENV === 'production') {
         let err = { ...error };
 
@@ -62,6 +62,6 @@ module.exports = (error, req, res, next) => {
         if (err.code === 11000) err = handleDuplicateFieldsDB(err);
         if (err.name === 'ValidationError') err = handleValidationErrorDB(err);
 
-        sendErrorProd(err, req);
+        sendErrorProd(err, res);
     }
 };
