@@ -1,8 +1,15 @@
+const User = require('./../models/userModel');
+
 // get all users
-exports.getAllUsers = (req, res) => {
+exports.getAllUsers = async (req, res) => {
+    const users = await User.find();
+
     res.status(500).json({
-        status: 'fail',
-        message: 'No tour found'
+        status: 'success',
+        results: users.length,
+        data: {
+            users
+        }
     });
 };
 exports.createUser = (req, res) => {
@@ -29,4 +36,3 @@ exports.deleteUser = (req, res) => {
         message: 'No tour found'
     });
 };
-

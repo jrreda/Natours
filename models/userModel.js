@@ -6,9 +6,9 @@ const userSchema = new mongoose.Schema({
     name: {
         type: String,
         required: [true, 'User must have a name'],
-        unique: true,
+        unique: false,
         trim: true,
-        match: /^\w+$/,
+        // match: /^\w+$/,
         minlength: 3,
         maxlength: 50
     },
@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema({
     photo: {
         type: String,
         default: 'default.jpg'
+    },
+    role: {
+        type: String,
+        enum: ['user', 'admin', 'guide', 'lead-guide'],
+        default: 'user'
     },
     password: {
         type: String,
@@ -40,7 +45,8 @@ const userSchema = new mongoose.Schema({
             },
             message: 'Passwords do not match'
         }
-    }
+    },
+    passwordChangedAt: Date
 });
 
 // Hash password before saving/creating
@@ -55,5 +61,22 @@ userSchema.pre('save', async function(next) {
 
     next();
 });
+
+// create an instance method that make sure the password field is corrcet
+userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
+    return await bcrypt.compare(candidatePassword, userPassword);
+};
+
+// create an instance method that make sure the password field is corrcet
+userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
+    // If password changed after the token was issued return true otherwise false
+    if (this.passwordChangedAt) {
+        const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+        return JWTTimestamp < changedTimestamp;
+    }
+
+    // False means NOT changed
+    return false;
+};
 
 module.exports = mongoose.model('User', userSchema);
